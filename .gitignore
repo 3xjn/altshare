@@ -49,9 +49,7 @@ msbuild.wrn
 
 # Sensitive or environment-specific files
 *.pem
-appsettings.*.json
-!appsettings.json
-!appsettings.Example.json
+appsettings*.json
 
 # Logs
 logs/
