@@ -1,4 +1,5 @@
-﻿using AltShare.Models;
+﻿using System.ComponentModel.DataAnnotations;
+using AltShare.Models;
 using AltShare.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -18,9 +19,9 @@ namespace AltShare.Controllers
 
         [Authorize]
         [HttpPost("upload")]
-        public IActionResult UploadAccount([FromBody] SharedAccount account)
+        public IActionResult UploadAccount(string email, string password, [FromBody] DecryptedSharedAccount account)
         {
-            _sharedService.Create(account);
+            _sharedService.Create(email, password, new List<DecryptedSharedAccount> { account });
             return Ok();
         }
     }

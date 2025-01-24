@@ -6,7 +6,6 @@ using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using System.Security.Cryptography;
 using Microsoft.OpenApi.Models;
-using AltShare.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
