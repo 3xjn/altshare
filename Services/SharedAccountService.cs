@@ -1,90 +1,97 @@
-﻿using AltShare.Models;
+﻿using System.Security.Cryptography;
+using System.Text;
+using AltShare.Models;
 using Isopoh.Cryptography.Argon2;
 using Microsoft.Extensions.Options;
 using MongoDB.Bson;
 using MongoDB.Driver;
+using Newtonsoft.Json;
+using JsonSerializer = System.Text.Json.JsonSerializer;
 
 namespace AltShare.Services
 {
     public class SharedAccountService
     {
-        private readonly IMongoCollection<EncryptedSharedAccount> _shared;
-        private readonly IMongoCollection<SharedAccountMapping> _mapping;
+        private readonly IMongoCollection<EncryptedSharedAccount> _sharedAccounts;
+        private readonly IMongoCollection<SharedAccountMapping> _masterKeyMappings;
+        private readonly Argon2Settings _argonSettings;
 
-        public SharedAccountService(MongoClient mongoClient, IOptions<AccountDatabaseSettings> settings)
+        public SharedAccountService(
+            IMongoCollection<EncryptedSharedAccount> sharedAccounts,
+            IMongoCollection<SharedAccountMapping> masterKeyMappings,
+            IOptions<Argon2Settings> argonSettings)
         {
-            var database = mongoClient.GetDatabase(settings.Value.DatabaseName);
-            _shared = database.GetCollection<EncryptedSharedAccount>(nameof(EncryptedSharedAccount));
-            _mapping = database.GetCollection<SharedAccountMapping>(nameof(SharedAccountMapping));
+            _sharedAccounts = sharedAccounts;
+            _masterKeyMappings = masterKeyMappings;
+            _argonSettings = argonSettings.Value;
         }
 
-        public List<EncryptedSharedAccount> GetAll() => _shared.Find(account => true).ToList();
+        public List<EncryptedSharedAccount> GetAll() => _sharedAccounts.Find(account => true).ToList();
 
-        public EncryptedSharedAccount Get(string id) => _shared.Find(account => account.Id.ToString() == id).FirstOrDefault();
+        public EncryptedSharedAccount Get(string id) => _sharedAccounts.Find(account => account.Id.ToString() == id).FirstOrDefault();
+        public void Delete(EncryptedSharedAccount accountForDeletion) => _sharedAccounts.DeleteOne(account => account.Id == accountForDeletion.Id);
 
-        public void Create(string email, string password, List<DecryptedSharedAccount> decryptedAccounts)
+        public void Delete(string id) => _sharedAccounts.DeleteOne(account => account.Id.ToString() == id);
+
+        public byte[] DeriveKeyWithArgon2(string password, byte[] salt)
         {
-            var (masterKey, encryptedJson) = EncryptAccount(email, password, decryptedAccounts);
-
-            var encryptedSharedAccount = new EncryptedSharedAccount
-            {
-                OwnerEmail = email,
-                EncryptedJson = encryptedJson,
-                Id = ObjectId.GenerateNewId(),
+            var config = new Argon2Config {
+                TimeCost = 3,
+                MemoryCost = 65536,
+                Lanes = 2,
+                Password = Encoding.UTF8.GetBytes(password),
+                Salt = salt,
+                HashLength = 32
             };
-
-            _shared.InsertOne(encryptedSharedAccount);
-
-            var encryptedMasterKey = Aes256GcmRandomKeyEncryption.Encrypt(masterKey, password);
-            var combinedUserKey = CombineIvTagCiphertext(encryptedMasterKey.IV, encryptedMasterKey.Tag, encryptedMasterKey.Ciphertext);
-
-            var accountMapping = new SharedAccountMapping
-            {
-                Email = email,
-                SharedAccountId = encryptedSharedAccount.Id,
-                UserKey = Convert.ToBase64String(combinedUserKey),
-            };
+            
+            using var argon2 = new Argon2(config);
+            return argon2.Hash().Buffer;
         }
 
-        private (byte[], string) EncryptAccount(string email, string password, List<DecryptedSharedAccount> decryptedAccounts)
+        public byte[] EncryptMasterKey(byte[] masterKey, string password, out byte[] salt, out byte[] iv, out byte[] tag)
         {
-            var decryptedJson = decryptedAccounts.ToJson();
-            var encrypted = Aes256GcmRandomKeyEncryption.Encrypt(System.Text.Encoding.UTF8.GetBytes(decryptedJson));
-            var combined = CombineIvTagCiphertext(encrypted.IV, encrypted.Tag, encrypted.Ciphertext);
+            salt = new byte[16];
+            iv = new byte[12];
+            RandomNumberGenerator.Fill(salt);
+            RandomNumberGenerator.Fill(iv);
 
-            return (encrypted.Key, Convert.ToBase64String(combined));
+            // Derive key using Argon2
+            var derivedKey = DeriveKeyWithArgon2(password, salt);
+
+            using var aes = new AesGcm(derivedKey);
+            var ciphertext = new byte[masterKey.Length];
+            tag = new byte[16];
+
+            aes.Encrypt(iv, masterKey, ciphertext, tag);
+            return ciphertext;
         }
 
-        byte[] CombineIvTagCiphertext(byte[] iv, byte[] tag, byte[] ciphertext)
+        public byte[] DecryptMasterKey(byte[] encryptedMasterKey, byte[] salt, byte[] iv, byte[] tag, string password)
         {
-            // Example sizes:
-            // iv.Length = 12, tag.Length = 16, ciphertext.Length = variable
-            var combined = new byte[iv.Length + tag.Length + ciphertext.Length];
+            var derivedKey = DeriveKeyWithArgon2(password, salt);
+            var plaintext = new byte[encryptedMasterKey.Length];
 
-            Buffer.BlockCopy(iv, 0, combined, 0, iv.Length);
-            Buffer.BlockCopy(tag, 0, combined, iv.Length, tag.Length);
-            Buffer.BlockCopy(ciphertext, 0, combined, iv.Length + tag.Length, ciphertext.Length);
+            using var aes = new AesGcm(derivedKey);
+            aes.Decrypt(iv, encryptedMasterKey, tag, plaintext);
 
-            return combined;
+            return plaintext;
         }
 
-        void SplitIvTagCiphertext(byte[] combined, out byte[] iv, out byte[] tag, out byte[] ciphertext)
+        public async Task<byte[]> GetDecryptedMasterKeyAsync(string email, string password)
         {
-            // Known GCM sizes (if you used the defaults):
-            int ivLength = 12;
-            int tagLength = 16;
+            var mapping = await _masterKeyMappings.Find(m => m.Email == email)
+                                                .FirstOrDefaultAsync();
 
-            iv = new byte[ivLength];
-            tag = new byte[tagLength];
-            ciphertext = new byte[combined.Length - ivLength - tagLength];
+            if (mapping == null) throw new InvalidOperationException("Master key not found");
 
-            Buffer.BlockCopy(combined, 0, iv, 0, ivLength);
-            Buffer.BlockCopy(combined, ivLength, tag, 0, tagLength);
-            Buffer.BlockCopy(combined, ivLength + tagLength, ciphertext, 0, ciphertext.Length);
+            return DecryptMasterKey(
+                mapping.EncryptedMasterKey,
+                mapping.Salt,
+                mapping.IV,
+                mapping.Tag,
+                password
+            );
         }
-
-        public void Delete(EncryptedSharedAccount accountForDeletion) => _shared.DeleteOne(account => account.Id == accountForDeletion.Id);
-
-        public void Delete(string id) => _shared.DeleteOne(account => account.Id.ToString() == id);
     }
 }
+    

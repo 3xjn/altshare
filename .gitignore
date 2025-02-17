@@ -72,3 +72,11 @@ build/
 *.tmp
 *.temp
 *.cache
+
+# Local configuration files
+appsettings.Development.json
+local.appsettings.json
+
+# User-specific files
+*.rsuser
+bun.lockb

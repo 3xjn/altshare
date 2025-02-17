@@ -1,16 +1,51 @@
-﻿namespace AltShare.Models
+﻿using System.ComponentModel.DataAnnotations;
+using MongoDB.Bson;
+
+namespace AltShare.Models
 {
     public class RegisterRequest
     {
-        public string email { get; set; }
-        public string username { get; set; }
-        public string password { get; set; }
-        public string passwordConfirmation { get; set; }
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [Required]
+        [MinLength(3)]
+        [MaxLength(15)]
+        public string Username { get; set; } = string.Empty;
+
+        [Required]
+        [MinLength(8)]
+        public string Password { get; set; } = string.Empty;
+
+        [Required]
+        [Compare("Password")]
+        public string PasswordConfirmation { get; set; } = string.Empty;
+
+        public string MasterKeyEncrypted { get; set; }
+        public string IV { get; set; }
+        public string Salt { get; set; }
     }
 
     public class LoginRequest
     {
-        public string email { get; set; }
-        public string password { get; set; }
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = string.Empty;
+
+        [Required]
+        public string Password { get; set; } = string.Empty;
+    }
+
+    public class UploadAccountRequest
+    {
+        public string Password { get; set; }
+        public DecryptedSharedAccount Account { get; set; }
+    }
+
+    public class AddAccountRequest
+    {
+        public string encryptedData { get; set; } = "";
+        public string userKey { get; set; } = "";
     }
 }

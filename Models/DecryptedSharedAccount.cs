@@ -18,11 +18,4 @@ namespace AltShare.Models
         public string OwnerEmail { get; set; }
         public string EncryptedJson { get; set; }
     }
-
-    public class SharedAccountMapping
-    {
-        public string Email { get; set; }
-        public ObjectId SharedAccountId { get; set; }
-        public string UserKey { get; set; }
-    }
 }
