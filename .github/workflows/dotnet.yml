@@ -37,10 +37,21 @@ jobs:
       with:
         push: true
         tags: ghcr.io/3xjn/altshare:latest
+    - name: Copy docker-compose.yml to Remote Server
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.REMOTE_HOST }}
+        username: ${{ secrets.REMOTE_USER }}
+        key: ${{ secrets.REMOTE_KEY }}
+        source: "docker-compose.yml"
+        target: "/root/altshare/docker-compose.yml"
     - name: SSH and deploy
       uses: appleboy/ssh-action@v1.2.0
       with:
         host: ${{ secrets.HOST }}
         username: root
         key: ${{ secrets.KEY }}
-        script: whoami
+        script: |
+          cd /root/altshare
+          docker-compose pull
+          docker-compose up -d       
