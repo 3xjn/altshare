@@ -37,4 +37,10 @@ jobs:
       with:
         push: true
         tags: ghcr.io/3xjn/altshare:latest
-
+    - name: SSH and deploy
+      uses: appleboy/ssh-action@v1.2.0
+      with:
+        host: ${{ secrets.HOST }}
+        username: root
+        key: ${{ secrets.KEY }}
+        script: whoami
