@@ -11,7 +11,6 @@ using MongoDB.Driver;
 using MongoDB.Bson;
 using System.Text.Json;
 using System.Net.Http;
-using System.Security.Cryptography.X509Certificates;
 
 namespace AltShare.Controllers
 {
@@ -74,7 +73,7 @@ namespace AltShare.Controllers
                 Console.WriteLine("Creating user account...");
                 // Hash the password with Argon2 (this generates its own salt)
                 var passwordHash = _passwordHasherService.HashPassword(request.Password);
-                var token = GenerateJwtToken(request.Email);
+                                var token = GenerateJwtToken(request.Email);
 
                 // Create the user account
                 _accountService.Create(new UserAccount
@@ -199,7 +198,7 @@ namespace AltShare.Controllers
 
         private string GenerateJwtToken(string email)
         {
-            var privateKey = _configuration["Jwt:PrivateKey"];
+            var privateKey = _configuration["Jwt:PrivateKey"]?.Replace("\r", "").Replace("\n", "");
 
             if (string.IsNullOrEmpty(privateKey))
             {
@@ -207,7 +206,7 @@ namespace AltShare.Controllers
             }
 
             RSA rsaPrivate = RSA.Create();
-            rsaPrivate.ImportRSAPrivateKey(Convert.FromBase64String(privateKey), out var _);
+            rsaPrivate.ImportFromPem(privateKey);
 
             var signingCredentials = new SigningCredentials(
                 key: new RsaSecurityKey(rsaPrivate),
