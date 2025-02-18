@@ -11,6 +11,7 @@ using MongoDB.Driver;
 using MongoDB.Bson;
 using System.Text.Json;
 using System.Net.Http;
+using System.Security.Cryptography.X509Certificates;
 
 namespace AltShare.Controllers
 {
@@ -198,8 +199,7 @@ namespace AltShare.Controllers
 
         private string GenerateJwtToken(string email)
         {
-            var privateKey = _configuration["Jwt:PrivateKey"]?.Replace("\\n", "\n").Trim();
-            Console.WriteLine(privateKey);
+            var privateKey = _configuration["Jwt:PrivateKey"];
 
             if (string.IsNullOrEmpty(privateKey))
             {
@@ -207,7 +207,7 @@ namespace AltShare.Controllers
             }
 
             RSA rsaPrivate = RSA.Create();
-            rsaPrivate.ImportFromPem(privateKey);
+            rsaPrivate.ImportRSAPrivateKey(Convert.FromBase64String(privateKey), out var _);
 
             var signingCredentials = new SigningCredentials(
                 key: new RsaSecurityKey(rsaPrivate),
