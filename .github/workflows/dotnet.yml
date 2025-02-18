@@ -8,6 +8,8 @@ on:
     branches: [ "main" ]
   pull_request:
     branches: [ "main" ]
+  workflow_dispatch:
+
 
 jobs:
   build:
@@ -44,7 +46,7 @@ jobs:
         username: root
         key: ${{ secrets.KEY }}
         source: "docker-compose.yml"
-        target: "/root/altshare/docker-compose.yml"
+        target: "/root/altshare/"
     - name: SSH and deploy
       uses: appleboy/ssh-action@v1.2.0
       with:
