@@ -22,9 +22,9 @@ jobs:
     - name: Checkout repo
       uses: actions/checkout@v4
     - name: Log in to the Container registry
-      uses: docker/login-action@65b78e6e13532edd9afa3aa52ac7964289d1a9c1
+      uses: docker/login-action@v3
       with:
-        registry: ${{ env.REGISTRY }}
+        registry: ghcr.io
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     - name: Extract metadata (tags, labels) for Docker
@@ -33,11 +33,25 @@ jobs:
       with:
         images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
     - name: Build and push Docker image
-      id: push
-      uses: docker/build-push-action@f2a1d5e99d037542a71f64918e516c093c6f3fc4
+      uses: docker/build-push-action@v6
       with:
-        context: .
         push: true
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-
+        tags: ghcr.io/3xjn/altshare:latest
+    - name: Copy docker-compose.yml to Remote Server
+      uses: appleboy/scp-action@v0.1.7
+      with:
+        host: ${{ secrets.HOST }}
+        username: root
+        key: ${{ secrets.KEY }}
+        source: "docker-compose.yml"
+        target: "/root/altshare/docker-compose.yml"
+    - name: SSH and deploy
+      uses: appleboy/ssh-action@v1.2.0
+      with:
+        host: ${{ secrets.HOST }}
+        username: root
+        key: ${{ secrets.KEY }}
+        script: |
+          cd /root/altshare
+          docker-compose pull
+          docker-compose up -d       
