@@ -110,7 +110,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 
         var publicKeyPem = File.ReadAllText(publicKeyPath).Trim();
 
-        using RSA publicKey = RSA.Create();
+        RSA publicKey = RSA.Create();
         publicKey.ImportFromPem(publicKeyPem.ToCharArray());
 
         options.TokenValidationParameters = new TokenValidationParameters
