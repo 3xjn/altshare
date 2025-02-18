@@ -8,3 +8,6 @@ services:
       - "5002:8080"
     env_file:
       - .env
+    volumes:
+      - /root/altshare/jwt_private_key.pem:/run/secrets/jwt_private_key.pem:ro
+      - /root/altshare/jwt_public_key.pem:/run/secrets/jwt_public_key.pem:ro

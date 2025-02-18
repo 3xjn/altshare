@@ -11,6 +11,7 @@ using MongoDB.Driver;
 using MongoDB.Bson;
 using System.Text.Json;
 using System.Net.Http;
+using System.IO;
 
 namespace AltShare.Controllers
 {
@@ -26,6 +27,7 @@ namespace AltShare.Controllers
         private readonly IMongoCollection<EncryptedSharedAccount> _shared;
         private readonly IMongoCollection<SharedAccountMapping> _mapping;
         private readonly HttpClient _httpClient;
+        private readonly SigningCredentials _signingCredentials;
 
         public AuthController(
             MongoClient mongoClient,
@@ -45,6 +47,24 @@ namespace AltShare.Controllers
             var database = mongoClient.GetDatabase(settings.Value.DatabaseName);
             _shared = database.GetCollection<EncryptedSharedAccount>(nameof(EncryptedSharedAccount));
             _mapping = database.GetCollection<SharedAccountMapping>(nameof(SharedAccountMapping));
+
+            var privateKeyPath = "/run/secrets/jwt_private_key.pem";
+
+            if (!System.IO.File.Exists(privateKeyPath))
+            {
+                throw new InvalidOperationException("JWT private key file not found.");
+            }
+
+            var privateKeyPem = System.IO.File.ReadAllText(privateKeyPath).Trim();
+
+            using RSA rsaPrivate = RSA.Create();
+            // Import the key in PEM format
+            rsaPrivate.ImportFromPem(privateKeyPem.ToCharArray());
+
+            _signingCredentials = new SigningCredentials(
+                key: new RsaSecurityKey(rsaPrivate),
+                algorithm: SecurityAlgorithms.RsaSha256
+            );
         }
 
         [HttpPost("register")]
@@ -198,21 +218,6 @@ namespace AltShare.Controllers
 
         private string GenerateJwtToken(string email)
         {
-            var privateKey = _configuration["Jwt:PrivateKey"]?.Replace("\r", "").Replace("\n", "");
-
-            if (string.IsNullOrEmpty(privateKey))
-            {
-                throw new InvalidOperationException("JWT private key must be provided.");
-            }
-
-            RSA rsaPrivate = RSA.Create();
-            rsaPrivate.ImportFromPem(privateKey);
-
-            var signingCredentials = new SigningCredentials(
-                key: new RsaSecurityKey(rsaPrivate),
-                algorithm: SecurityAlgorithms.RsaSha256
-            );
-
             var claims = new[]
             {
                 new Claim(JwtRegisteredClaimNames.Iss, _configuration["Jwt:Issuer"] ?? throw new InvalidOperationException("JWT issuer must be configured")),
@@ -222,7 +227,7 @@ namespace AltShare.Controllers
             var token = new JwtSecurityToken(
                 claims: claims,
                 expires: DateTime.UtcNow.AddHours(1),
-                signingCredentials: signingCredentials
+                signingCredentials: _signingCredentials
             );
 
             return new JwtSecurityTokenHandler().WriteToken(token);

@@ -101,14 +101,17 @@ builder.Services.AddHttpClient();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var publicKey = builder.Configuration["Jwt:PublicKey"]?.Replace("\\n", "\n").Trim();
-        if (string.IsNullOrEmpty(publicKey))
+        var publicKeyPath = "/run/secrets/jwt_public_key.pem";
+
+        if (!File.Exists(publicKeyPath))
         {
-            throw new InvalidOperationException("JWT public key is not configured.");
+            throw new InvalidOperationException("JWT public key file not found.");
         }
 
-        var rsa = RSA.Create();
-        rsa.ImportFromPem(publicKey);
+        var publicKeyPem = File.ReadAllText(publicKeyPath).Trim();
+
+        using RSA publicKey = RSA.Create();
+        publicKey.ImportFromPem(publicKeyPem.ToCharArray());
 
         options.TokenValidationParameters = new TokenValidationParameters
         {
@@ -117,7 +120,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            IssuerSigningKey = new RsaSecurityKey(rsa)
+            IssuerSigningKey = new RsaSecurityKey(publicKey)
         };
 
         options.Events = new JwtBearerEvents
