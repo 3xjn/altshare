@@ -57,7 +57,7 @@ namespace AltShare.Controllers
 
             var privateKeyPem = System.IO.File.ReadAllText(privateKeyPath).Trim();
 
-            using RSA rsaPrivate = RSA.Create();
+            RSA rsaPrivate = RSA.Create();
             // Import the key in PEM format
             rsaPrivate.ImportFromPem(privateKeyPem.ToCharArray());
 
