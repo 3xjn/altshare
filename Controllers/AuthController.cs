@@ -73,6 +73,7 @@ namespace AltShare.Controllers
                 Console.WriteLine("Creating user account...");
                 // Hash the password with Argon2 (this generates its own salt)
                 var passwordHash = _passwordHasherService.HashPassword(request.Password);
+                var token = GenerateJwtToken(request.Email);
 
                 // Create the user account
                 _accountService.Create(new UserAccount
@@ -95,7 +96,6 @@ namespace AltShare.Controllers
                 await _mapping.InsertOneAsync(accountMapping);
                 Console.WriteLine("Account mapping created successfully");
 
-                var token = GenerateJwtToken(request.Email);
                 var response = new { 
                     token,
                     masterKeyEncrypted = Convert.ToBase64String(accountMapping.EncryptedMasterKey),
@@ -198,7 +198,7 @@ namespace AltShare.Controllers
 
         private string GenerateJwtToken(string email)
         {
-            var privateKey = _configuration["Jwt:PrivateKey"]?.Replace("\r", "").Replace("\n", "");
+            var privateKey = _configuration["Jwt:PrivateKey"]?.Replace("\\n", "\n").Trim();
 
             if (string.IsNullOrEmpty(privateKey))
             {
