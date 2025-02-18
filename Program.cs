@@ -101,7 +101,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var publicKey = builder.Configuration["Jwt:PublicKey"].Replace("\r\n", "");
+        var publicKey = builder.Configuration["Jwt:PublicKey"]?.Replace("\r", "").Replace("\n", "");
         if (string.IsNullOrEmpty(publicKey))
         {
             throw new InvalidOperationException("JWT public key is not configured.");

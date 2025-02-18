@@ -198,7 +198,7 @@ namespace AltShare.Controllers
 
         private string GenerateJwtToken(string email)
         {
-            var privateKey = _configuration["Jwt:PrivateKey"]?.Replace("\r\n", "");
+            var privateKey = _configuration["Jwt:PrivateKey"]?.Replace("\r", "").Replace("\n", "");
 
             if (string.IsNullOrEmpty(privateKey))
             {
