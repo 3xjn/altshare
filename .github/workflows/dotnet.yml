@@ -40,9 +40,9 @@ jobs:
     - name: Copy docker-compose.yml to Remote Server
       uses: appleboy/scp-action@v0.1.7
       with:
-        host: ${{ secrets.REMOTE_HOST }}
-        username: ${{ secrets.REMOTE_USER }}
-        key: ${{ secrets.REMOTE_KEY }}
+        host: ${{ secrets.HOST }}
+        username: root
+        key: ${{ secrets.KEY }}
         source: "docker-compose.yml"
         target: "/root/altshare/docker-compose.yml"
     - name: SSH and deploy
