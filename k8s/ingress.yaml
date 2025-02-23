@@ -10,7 +10,7 @@ metadata:
 spec:
   ingressClassName: public
   rules:
-  - host: share.raegous.dev
+  - host: share.3xjn.dev
     http:
       paths:
       - pathType: Prefix
@@ -22,5 +22,5 @@ spec:
               number: 80
   tls:
   - hosts:
-    - share.raegous.dev
+    - share.3xjn.dev
     secretName: altshare-tls-cert
