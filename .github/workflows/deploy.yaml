@@ -50,6 +50,11 @@ jobs:
           echo "${{ secrets.KUBE_CONFIG }}" > ~/.kube/config
           chmod 600 ~/.kube/config
 
+      - name: Verify cluster connection
+        run: |
+          kubectl cluster-info
+          kubectl get nodes
+
       - name: Update image in deployment manifest
         run: |
           sed -i "s|image: altshare:latest|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|" k8s/deployment.yaml
@@ -57,5 +62,11 @@ jobs:
       - name: Apply k8s manifests
         run: |
           export KUBECONFIG=~/.kube/config
-          kubectl apply -f k8s/
+          kubectl apply -f k8s/ --server-side
+
+      - name: Verify deployment
+        run: |
+          kubectl get pods -l app=altshare
+          kubectl get service altshare
+          kubectl get ingress altshare-ingress
 
