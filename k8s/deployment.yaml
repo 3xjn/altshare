@@ -14,12 +14,21 @@ spec:
       labels:
         app: altshare
     spec:
+      securityContext:
+        fsGroup: 2000
+        runAsNonRoot: true
+        runAsUser: 1000
       imagePullSecrets:
         - name: ghcr-auth
       containers:
       - name: altshare
         image: altshare:latest
         imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false
+          runAsNonRoot: true
+          runAsUser: 1000
         ports:
         - containerPort: 8080
         env:
@@ -40,6 +49,8 @@ spec:
         - name: jwt-keys
           mountPath: "/run/secrets"
           readOnly: true
+        - name: tmp
+          mountPath: /tmp
       volumes:
       - name: jwt-keys
         secret:
@@ -48,4 +59,6 @@ spec:
           - key: private-key
             path: jwt_private_key.pem
           - key: public-key
-            path: jwt_public_key.pem 
+            path: jwt_public_key.pem
+      - name: tmp
+        emptyDir: {} 
