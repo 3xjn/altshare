@@ -56,5 +56,6 @@ jobs:
 
       - name: Apply k8s manifests
         run: |
+          export KUBECONFIG=~/.kube/config
           kubectl apply -f k8s/
 
