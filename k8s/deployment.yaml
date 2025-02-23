@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: altshare
+  labels:
+    app: altshare
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: altshare
+  template:
+    metadata:
+      labels:
+        app: altshare
+    spec:
+      containers:
+      - name: altshare
+        image: altshare:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+        env:
+        - name: Mongo__ConnectionString
+          valueFrom:
+            secretKeyRef:
+              name: altshare-secrets
+              key: mongodb-connection-string
+        - name: JWT__Issuer
+          value: "share.raegous.dev"
+        - name: Mongo__DatabaseName
+          value: "AccountShare"
+        - name: Mongo__UserCollectionName
+          value: "UserAccount"
+        - name: Mongo__AccountCollectionName
+          value: "SharedAccount"
+        volumeMounts:
+        - name: jwt-keys
+          mountPath: "/run/secrets"
+          readOnly: true
+      volumes:
+      - name: jwt-keys
+        secret:
+          secretName: jwt-keys
+          items:
+          - key: private-key
+            path: jwt_private_key.pem
+          - key: public-key
+            path: jwt_public_key.pem 
