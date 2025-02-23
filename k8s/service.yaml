@@ -6,7 +6,8 @@ spec:
   selector:
     app: altshare
   ports:
-  - port: 80
+  - name: http-ws
+    port: 80
     targetPort: 8080
     protocol: TCP
   type: ClusterIP 
