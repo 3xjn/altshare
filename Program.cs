@@ -101,7 +101,7 @@ builder.Services.AddHttpClient();
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var publicKeyPath = "/run/secrets/jwt_public_key.pem";
+        var publicKeyPath = "/run/secrets/altshare/jwt_public_key.pem";
 
         if (!File.Exists(publicKeyPath))
         {

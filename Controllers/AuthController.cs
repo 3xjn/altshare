@@ -48,7 +48,7 @@ namespace AltShare.Controllers
             _shared = database.GetCollection<EncryptedSharedAccount>(nameof(EncryptedSharedAccount));
             _mapping = database.GetCollection<SharedAccountMapping>(nameof(SharedAccountMapping));
 
-            var privateKeyPath = "/run/secrets/jwt_private_key.pem";
+            var privateKeyPath = "/run/secrets/altshare/jwt_private_key.pem";
 
             if (!System.IO.File.Exists(privateKeyPath))
             {

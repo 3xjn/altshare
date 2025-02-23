@@ -40,7 +40,7 @@ spec:
           value: "SharedAccount"
         volumeMounts:
         - name: jwt-keys
-          mountPath: "/run/secrets"
+          mountPath: "/run/secrets/altshare"
           readOnly: true
         - name: tmp
           mountPath: /tmp
