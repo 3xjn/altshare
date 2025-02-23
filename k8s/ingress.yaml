@@ -7,6 +7,10 @@ metadata:
     acme.cert-manager.io/http01-edit-in-place: "true"
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "3600"
+    nginx.ingress.kubernetes.io/websocket-services: "altshare"
 spec:
   ingressClassName: public
   rules:
@@ -19,7 +23,7 @@ spec:
           service:
             name: altshare
             port:
-              number: 80
+              number: 8080
   tls:
   - hosts:
     - share.3xjn.dev
