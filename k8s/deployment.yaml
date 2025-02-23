@@ -14,10 +14,6 @@ spec:
       labels:
         app: altshare
     spec:
-      securityContext:
-        fsGroup: 2000
-        runAsNonRoot: true
-        runAsUser: 1000
       imagePullSecrets:
         - name: ghcr-auth
       containers:
@@ -25,10 +21,7 @@ spec:
         image: altshare:latest
         imagePullPolicy: IfNotPresent
         securityContext:
-          allowPrivilegeEscalation: false
-          readOnlyRootFilesystem: false
-          runAsNonRoot: true
-          runAsUser: 1000
+          privileged: true
         ports:
         - containerPort: 8080
         env:
