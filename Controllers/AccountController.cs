@@ -12,7 +12,7 @@ namespace AltShare.Controllers
     [ApiController]
     [Route("api/account")]
     [Tags("account")]
-    [Authorize]
+    //[Authorize]
     public class AccountController : Controller
     {
         private readonly SharedAccountService _sharedService;
@@ -41,36 +41,16 @@ namespace AltShare.Controllers
                 return Unauthorized(new { message = "Invalid token." });
             }
 
-            var emailFilter = Builders<SharedAccountMapping>.Filter.Eq(account => account.Email, email);
-            var mappings = await _mapping.Find(emailFilter).ToListAsync();
+            var emailFilter = Builders<EncryptedSharedAccount>.Filter.Eq(account => account.OwnerEmail, email);
+            var accounts = await _shared.Find(emailFilter).ToListAsync();
+            var accountResponse = new List<Dictionary<string, string>>();
 
-            var encryptedAccounts = new List<Dictionary<string, string>>();
-
-            foreach (var mapping in mappings)
+            foreach (var account in accounts)
             {
-                try
-                {
-                    var filter = Builders<EncryptedSharedAccount>.Filter.Eq("_id", mapping.SharedAccountId);
-                    var sharedAccount = await _shared.Find(filter).FirstOrDefaultAsync();
-
-                    if (sharedAccount == null)
-                    {
-                        Console.WriteLine($"Shared account with ID {mapping.SharedAccountId} not found.");
-                        continue;
-                    }
-
-                    encryptedAccounts.Add(new Dictionary<string, string> {
-                        { "encryptedData", sharedAccount.EncryptedJson },
-                        { "userKey", Convert.ToBase64String(sharedAccount.IV) },
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error retrieving shared account: {ex.Message}");
-                }
+                accountResponse.Add(new Dictionary<string, string> { { "encryptedData", account.EncryptedJson } });
             }
 
-            return Ok(new { encryptedAccounts });
+            return Ok(accountResponse);
         }
 
         [HttpPost]
@@ -78,25 +58,18 @@ namespace AltShare.Controllers
         {
             var email = User.FindFirst(ClaimTypes.Email)?.Value;
             if (string.IsNullOrEmpty(email)) return Unauthorized();
-            
+
             var accountId = ObjectId.GenerateNewId();
-            
-            var encryptedAccount = new EncryptedSharedAccount {
+
+            var encryptedAccount = new EncryptedSharedAccount
+            {
                 Id = accountId,
                 OwnerEmail = email,
                 EncryptedJson = request.encryptedData,
-                IV = Convert.FromBase64String(request.userKey)
-            };
-
-            var mapping = new SharedAccountMapping {
-                Email = email,
-                SharedAccountId = accountId,
-                UserKey = request.userKey
             };
 
             await _shared.InsertOneAsync(encryptedAccount);
-            await _mapping.InsertOneAsync(mapping);
-            
+
             return Ok();
         }
 
@@ -153,16 +126,15 @@ namespace AltShare.Controllers
                 }
 
                 var update = Builders<EncryptedSharedAccount>.Update
-                    .Set(a => a.EncryptedJson, request.encryptedData)
-                    .Set(a => a.IV, Convert.FromBase64String(request.userKey));
+                    .Set(a => a.EncryptedJson, request.encryptedData);
 
                 await _shared.UpdateOneAsync(filter, update);
 
-                var mappingFilter = Builders<SharedAccountMapping>.Filter.Eq("SharedAccountId", ObjectId.Parse(id));
-                var mappingUpdate = Builders<SharedAccountMapping>.Update
-                    .Set(m => m.UserKey, request.userKey);
+                //var mappingFilter = Builders<SharedAccountMapping>.Filter.Eq("SharedAccountId", ObjectId.Parse(id));
+                //var mappingUpdate = Builders<SharedAccountMapping>.Update
+                //    .Set(m => m.EncryptedMasterKey, request.userKey);
 
-                await _mapping.UpdateOneAsync(mappingFilter, mappingUpdate);
+                //await _mapping.UpdateOneAsync(mappingFilter, mappingUpdate);
 
                 return Ok();
             }
@@ -197,7 +169,7 @@ namespace AltShare.Controllers
             {
                 return BadRequest("Account already shared");
             }
-                
+
             await _relationships.InsertOneAsync(relationship);
             return Ok();
         }
@@ -232,7 +204,6 @@ namespace AltShare.Controllers
                     {
                         encryptedAccounts.Add(new Dictionary<string, string> {
                             { "encryptedData", sharedAccount.EncryptedJson },
-                            { "accountIv", Convert.ToBase64String(sharedAccount.IV) },
                             { "encryptedMasterKey", Convert.ToBase64String(invite.EncryptedMasterKey) },
                             { "iv", Convert.ToBase64String(invite.IV) },
                             { "salt", Convert.ToBase64String(invite.Salt) },

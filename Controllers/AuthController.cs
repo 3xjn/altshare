@@ -12,6 +12,7 @@ using MongoDB.Bson;
 using System.Text.Json;
 using System.Net.Http;
 using System.IO;
+using System.Net;
 
 namespace AltShare.Controllers
 {
@@ -48,7 +49,10 @@ namespace AltShare.Controllers
             _shared = database.GetCollection<EncryptedSharedAccount>(nameof(EncryptedSharedAccount));
             _mapping = database.GetCollection<SharedAccountMapping>(nameof(SharedAccountMapping));
 
-            var privateKeyPath = "/run/secrets/altshare/jwt_private_key.pem";
+            var privateKeyPath =
+                IsRunningInKubernetes()
+                    ? "/run/secrets/altshare/private_key.pem"
+                    : "private_key.pem";
 
             if (!System.IO.File.Exists(privateKeyPath))
             {
@@ -71,7 +75,7 @@ namespace AltShare.Controllers
         public async Task<IActionResult> RegisterAsync([FromBody] RegisterRequest request)
         {
             Console.WriteLine($"Registration attempt for email: {request.Email}");
-            
+
             if (request.Password != request.PasswordConfirmation)
             {
                 return StatusCode(400, new { error = "Passwords do not match" });
@@ -91,11 +95,10 @@ namespace AltShare.Controllers
 
             try {
                 Console.WriteLine("Creating user account...");
-                // Hash the password with Argon2 (this generates its own salt)
-                var passwordHash = _passwordHasherService.HashPassword(request.Password);
-                                var token = GenerateJwtToken(request.Email);
 
-                // Create the user account
+                var passwordHash = _passwordHasherService.HashPassword(request.Password);
+                var token = GenerateJwtToken(request.Email);
+
                 _accountService.Create(new UserAccount
                 {
                     Username = request.Username,
@@ -108,20 +111,14 @@ namespace AltShare.Controllers
                 {
                     Email = request.Email,
                     EncryptedMasterKey = Convert.FromBase64String(request.MasterKeyEncrypted),
-                    IV = Convert.FromBase64String(request.IV),
-                    Salt = Convert.FromBase64String(request.Salt),
-                    Tag = Array.Empty<byte>() // Not used in new flow
                 };
 
                 await _mapping.InsertOneAsync(accountMapping);
                 Console.WriteLine("Account mapping created successfully");
 
-                var response = new { 
+                var response = new {
                     token,
                     masterKeyEncrypted = Convert.ToBase64String(accountMapping.EncryptedMasterKey),
-                    masterKeyIv = Convert.ToBase64String(accountMapping.IV),
-                    salt = Convert.ToBase64String(accountMapping.Salt),
-                    tag = Convert.ToBase64String(accountMapping.Tag)
                 };
                 Console.WriteLine($"Registration complete. Response: {System.Text.Json.JsonSerializer.Serialize(response)}");
                 return Ok(response);
@@ -156,29 +153,26 @@ namespace AltShare.Controllers
             }
 
             var token = GenerateJwtToken(request.Email);
-            
+
             // Get the user's encrypted master key info
             var emailFilter = Builders<SharedAccountMapping>.Filter.Eq(account => account.Email, request.Email);
             var mapping = await _mapping.Find(emailFilter).FirstOrDefaultAsync();
-            
+
             Console.WriteLine($"Found mapping: {mapping != null}");
             if (mapping == null || mapping.EncryptedMasterKey == null || mapping.EncryptedMasterKey.Length == 0)
             {
                 Console.WriteLine("No valid master key found - user must register");
-                return Unauthorized(new { 
+                return Unauthorized(new {
                     message = "Account not properly configured. Please contact support."
                 });
             }
-            
+
             // Return existing mapping
-            var response = new { 
+            var response = new {
                 token,
                 masterKeyEncrypted = Convert.ToBase64String(mapping.EncryptedMasterKey),
-                masterKeyIv = Convert.ToBase64String(mapping.IV),
-                salt = Convert.ToBase64String(mapping.Salt),
-                tag = Convert.ToBase64String(mapping.Tag)
             };
-            
+
             return Ok(response);
         }
 
@@ -207,10 +201,7 @@ namespace AltShare.Controllers
             }
 
             var response = new {
-                encryptedMasterKey = Convert.ToBase64String(mapping.EncryptedMasterKey),
-                masterKeyIv = Convert.ToBase64String(mapping.IV),
-                salt = Convert.ToBase64String(mapping.Salt),
-                tag = Convert.ToBase64String(mapping.Tag)
+                encryptedMasterKey = Convert.ToBase64String(mapping.EncryptedMasterKey)
             };
 
             return Ok(response);
@@ -231,6 +222,11 @@ namespace AltShare.Controllers
             );
 
             return new JwtSecurityTokenHandler().WriteToken(token);
+        }
+
+        bool IsRunningInKubernetes()
+        {
+            return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KUBERNETES_SERVICE_HOST"));
         }
     }
 

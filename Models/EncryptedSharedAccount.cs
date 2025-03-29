@@ -7,6 +7,4 @@ public class EncryptedSharedAccount
     public ObjectId Id { get; set; }
     public string OwnerEmail { get; set; }
     public string EncryptedJson { get; set; }
-    public byte[] IV { get; set; }
-    public string? Rank { get; set; }
 } 

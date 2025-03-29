@@ -7,6 +7,7 @@ using MongoDB.Driver;
 using System.Security.Cryptography;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.SignalR;
+using System.Net;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,8 +48,9 @@ builder.Services.AddSwaggerGen(option =>
     );
 });
 
-builder.Services.Configure<AccountDatabaseSettings>(settings => {
-    settings.ConnectionString = builder.Configuration["Mongo:ConnectionString"] ?? 
+builder.Services.Configure<AccountDatabaseSettings>(settings =>
+{
+    settings.ConnectionString = builder.Configuration["Mongo:ConnectionString"] ??
         throw new InvalidOperationException("MongoDB connection string is missing");
     settings.DatabaseName = builder.Configuration["Mongo:DatabaseName"] ?? "AccountShare";
     settings.UserCollectionName = builder.Configuration["Mongo:UserCollectionName"] ?? "UserAccount";
@@ -98,10 +100,18 @@ builder.Services.AddSingleton<PasswordHasherService>();
 
 builder.Services.AddHttpClient();
 
+bool IsRunningInKubernetes()
+{
+    return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KUBERNETES_SERVICE_HOST"));
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var publicKeyPath = "/run/secrets/altshare/jwt_public_key.pem";
+        var publicKeyPath =
+            IsRunningInKubernetes()
+                ? "/run/secrets/altshare/public_key.pem"
+                : "public_key.pem";
 
         if (!File.Exists(publicKeyPath))
         {
@@ -157,6 +167,9 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+ServicePointManager.ServerCertificateValidationCallback +=
+(sender, cert, chain, sslPolicyErrors) => { return true; };
+
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 
@@ -166,11 +179,15 @@ app.UseWebSockets();
 
 app.UseCors(); // Add CORS middleware
 
-app.UseAuthentication(); // Add this line
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "AltShare v1");
+    c.RoutePrefix = "swagger";
+});
 
 // Map endpoints after UseRouting and UseCors
 app.MapHub<SignalingHub>("/api/hub");
