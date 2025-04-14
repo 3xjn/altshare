@@ -110,7 +110,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     {
         var publicKeyPath =
             IsRunningInKubernetes()
-                ? "/run/secrets/altshare/public_key.pem"
+                ? "/run/secrets/altshare/jwt_public_key.pem"
                 : "public_key.pem";
 
         if (!File.Exists(publicKeyPath))
