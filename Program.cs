@@ -2,12 +2,11 @@ using AltShare.Models;
 using AltShare.Services;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using System.Security.Cryptography;
 using Microsoft.OpenApi.Models;
-using Microsoft.AspNetCore.SignalR;
 using System.Net;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -171,7 +170,6 @@ ServicePointManager.ServerCertificateValidationCallback +=
 (sender, cert, chain, sslPolicyErrors) => { return true; };
 
 app.UseHttpsRedirection();
-app.UseStaticFiles();
 
 app.UseRouting();
 
@@ -193,8 +191,28 @@ app.UseSwaggerUI(c =>
 app.MapHub<SignalingHub>("/api/hub");
 app.MapControllers();
 
-//app.MapControllerRoute(
-//    name: "default",
-//    pattern: "{controller=Home}/{action=Index}/{id?}");
+if (app.Environment.IsProduction())
+{
+    app.UseExceptionHandler(config =>
+    {
+        config.Run(async context =>
+        {
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+
+            var errorDetails = new
+            {
+                message = "An unexpected error occurred. Please try again later."
+            };
+
+            var errorJson = JsonSerializer.Serialize(errorDetails);
+            await context.Response.WriteAsync(errorJson);
+        });
+    });
+}
+else
+{
+    app.UseDeveloperExceptionPage();
+}
 
 app.Run();
