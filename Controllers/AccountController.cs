@@ -6,6 +6,8 @@ using Microsoft.AspNetCore.Mvc;
 using MongoDB.Driver;
 using MongoDB.Bson;
 using Microsoft.Extensions.Options;
+using System.Xml.Linq;
+using System.Text.Json;
 
 namespace AltShare.Controllers
 {
@@ -19,17 +21,23 @@ namespace AltShare.Controllers
         private readonly IMongoCollection<EncryptedSharedAccount> _shared;
         private readonly IMongoCollection<SharedAccountMapping> _mapping;
         private readonly IMongoCollection<SharingRelationship> _relationships;
+        private readonly HttpClient _httpClient;
+        private readonly IConfiguration _configuration;
 
         public AccountController(
             MongoClient mongoClient,
             IOptions<AccountDatabaseSettings> settings,
-            SharedAccountService sharedService)
+            SharedAccountService sharedService,
+            HttpClient httpClient,
+            IConfiguration configuration)
         {
             _sharedService = sharedService;
             var database = mongoClient.GetDatabase(settings.Value.DatabaseName);
             _shared = database.GetCollection<EncryptedSharedAccount>(nameof(EncryptedSharedAccount));
             _mapping = database.GetCollection<SharedAccountMapping>(nameof(SharedAccountMapping));
             _relationships = database.GetCollection<SharingRelationship>(nameof(SharingRelationship));
+            _httpClient = httpClient;
+            _configuration = configuration;
         }
 
         [HttpGet]
@@ -41,36 +49,16 @@ namespace AltShare.Controllers
                 return Unauthorized(new { message = "Invalid token." });
             }
 
-            var emailFilter = Builders<SharedAccountMapping>.Filter.Eq(account => account.Email, email);
-            var mappings = await _mapping.Find(emailFilter).ToListAsync();
+            var emailFilter = Builders<EncryptedSharedAccount>.Filter.Eq(account => account.OwnerEmail, email);
+            var accounts = await _shared.Find(emailFilter).ToListAsync();
+            var accountResponse = new List<Dictionary<string, string>>();
 
-            var encryptedAccounts = new List<Dictionary<string, string>>();
-
-            foreach (var mapping in mappings)
+            foreach (var account in accounts)
             {
-                try
-                {
-                    var filter = Builders<EncryptedSharedAccount>.Filter.Eq("_id", mapping.SharedAccountId);
-                    var sharedAccount = await _shared.Find(filter).FirstOrDefaultAsync();
-
-                    if (sharedAccount == null)
-                    {
-                        Console.WriteLine($"Shared account with ID {mapping.SharedAccountId} not found.");
-                        continue;
-                    }
-
-                    encryptedAccounts.Add(new Dictionary<string, string> {
-                        { "encryptedData", sharedAccount.EncryptedJson },
-                        { "userKey", Convert.ToBase64String(sharedAccount.IV) },
-                    });
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"Error retrieving shared account: {ex.Message}");
-                }
+                accountResponse.Add(new Dictionary<string, string> { { "encryptedData", account.EncryptedJson } });
             }
 
-            return Ok(new { encryptedAccounts });
+            return Ok(accountResponse);
         }
 
         [HttpPost]
@@ -78,25 +66,18 @@ namespace AltShare.Controllers
         {
             var email = User.FindFirst(ClaimTypes.Email)?.Value;
             if (string.IsNullOrEmpty(email)) return Unauthorized();
-            
+
             var accountId = ObjectId.GenerateNewId();
-            
-            var encryptedAccount = new EncryptedSharedAccount {
+
+            var encryptedAccount = new EncryptedSharedAccount
+            {
                 Id = accountId,
                 OwnerEmail = email,
-                EncryptedJson = request.encryptedData,
-                IV = Convert.FromBase64String(request.userKey)
-            };
-
-            var mapping = new SharedAccountMapping {
-                Email = email,
-                SharedAccountId = accountId,
-                UserKey = request.userKey
+                EncryptedJson = request.encryptedData
             };
 
             await _shared.InsertOneAsync(encryptedAccount);
-            await _mapping.InsertOneAsync(mapping);
-            
+
             return Ok();
         }
 
@@ -153,16 +134,15 @@ namespace AltShare.Controllers
                 }
 
                 var update = Builders<EncryptedSharedAccount>.Update
-                    .Set(a => a.EncryptedJson, request.encryptedData)
-                    .Set(a => a.IV, Convert.FromBase64String(request.userKey));
+                    .Set(a => a.EncryptedJson, request.encryptedData);
 
                 await _shared.UpdateOneAsync(filter, update);
 
-                var mappingFilter = Builders<SharedAccountMapping>.Filter.Eq("SharedAccountId", ObjectId.Parse(id));
-                var mappingUpdate = Builders<SharedAccountMapping>.Update
-                    .Set(m => m.UserKey, request.userKey);
+                //var mappingFilter = Builders<SharedAccountMapping>.Filter.Eq("SharedAccountId", ObjectId.Parse(id));
+                //var mappingUpdate = Builders<SharedAccountMapping>.Update
+                //    .Set(m => m.EncryptedMasterKey, request.userKey);
 
-                await _mapping.UpdateOneAsync(mappingFilter, mappingUpdate);
+                //await _mapping.UpdateOneAsync(mappingFilter, mappingUpdate);
 
                 return Ok();
             }
@@ -197,7 +177,7 @@ namespace AltShare.Controllers
             {
                 return BadRequest("Account already shared");
             }
-                
+
             await _relationships.InsertOneAsync(relationship);
             return Ok();
         }
@@ -232,7 +212,6 @@ namespace AltShare.Controllers
                     {
                         encryptedAccounts.Add(new Dictionary<string, string> {
                             { "encryptedData", sharedAccount.EncryptedJson },
-                            { "accountIv", Convert.ToBase64String(sharedAccount.IV) },
                             { "encryptedMasterKey", Convert.ToBase64String(invite.EncryptedMasterKey) },
                             { "iv", Convert.ToBase64String(invite.IV) },
                             { "salt", Convert.ToBase64String(invite.Salt) },
@@ -248,6 +227,37 @@ namespace AltShare.Controllers
 
             Console.WriteLine($"Returning {encryptedAccounts.Count} total shared accounts");
             return Ok(new { encryptedAccounts });
+        }
+
+        [HttpGet("rank")]
+        public async Task<IActionResult> GetRank([FromQuery] RankRequest request)
+        {
+            var apiKey = _configuration["MarvelRivals:ApiKey"];
+            if (String.IsNullOrEmpty(apiKey)) throw new InvalidOperationException("Failed to access MarvelRivalsApi.com key");
+
+            _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
+            await _httpClient.GetAsync($"https://marvelrivalsapi.com/api/v1/player/{request.Username}/update");
+
+            var response = await _httpClient.GetAsync($"https://marvelrivalsapi.com/api/v1/player/{request.Username}");
+            //response.EnsureSuccessStatusCode();
+
+            var jsonString = await response.Content.ReadAsStringAsync();
+            try
+            {
+                using (JsonDocument doc = JsonDocument.Parse(jsonString))
+                {
+                    var rank = doc.RootElement
+                                      .GetProperty("player")
+                                      .GetProperty("rank")
+                                      .GetProperty("rank")
+                                      .GetString();
+
+                    return Ok(new { rank });
+                }
+            } catch
+            {
+                return Ok(new { rank = "Invalid level" });
+            }
         }
     }
 

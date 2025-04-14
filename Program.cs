@@ -2,15 +2,16 @@ using AltShare.Models;
 using AltShare.Services;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
-using Microsoft.Extensions.Options;
 using MongoDB.Driver;
 using System.Security.Cryptography;
 using Microsoft.OpenApi.Models;
-using Microsoft.AspNetCore.SignalR;
+using System.Net;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
+builder.Configuration.AddUserSecrets<Program>();
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddSwaggerGen(option =>
@@ -47,8 +48,9 @@ builder.Services.AddSwaggerGen(option =>
     );
 });
 
-builder.Services.Configure<AccountDatabaseSettings>(settings => {
-    settings.ConnectionString = builder.Configuration["Mongo:ConnectionString"] ?? 
+builder.Services.Configure<AccountDatabaseSettings>(settings =>
+{
+    settings.ConnectionString = builder.Configuration["Mongo:ConnectionString"] ??
         throw new InvalidOperationException("MongoDB connection string is missing");
     settings.DatabaseName = builder.Configuration["Mongo:DatabaseName"] ?? "AccountShare";
     settings.UserCollectionName = builder.Configuration["Mongo:UserCollectionName"] ?? "UserAccount";
@@ -98,10 +100,18 @@ builder.Services.AddSingleton<PasswordHasherService>();
 
 builder.Services.AddHttpClient();
 
+bool IsRunningInKubernetes()
+{
+    return !string.IsNullOrEmpty(Environment.GetEnvironmentVariable("KUBERNETES_SERVICE_HOST"));
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var publicKeyPath = "/run/secrets/altshare/jwt_public_key.pem";
+        var publicKeyPath =
+            IsRunningInKubernetes()
+                ? "/run/secrets/altshare/public_key.pem"
+                : "public_key.pem";
 
         if (!File.Exists(publicKeyPath))
         {
@@ -157,8 +167,10 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+ServicePointManager.ServerCertificateValidationCallback +=
+(sender, cert, chain, sslPolicyErrors) => { return true; };
+
 app.UseHttpsRedirection();
-app.UseStaticFiles();
 
 app.UseRouting();
 
@@ -166,18 +178,42 @@ app.UseWebSockets();
 
 app.UseCors(); // Add CORS middleware
 
-app.UseAuthentication(); // Add this line
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(c =>
+{
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "AltShare v1");
+    c.RoutePrefix = "swagger";
+});
 
 // Map endpoints after UseRouting and UseCors
 app.MapHub<SignalingHub>("/api/hub");
 app.MapControllers();
 
-//app.MapControllerRoute(
-//    name: "default",
-//    pattern: "{controller=Home}/{action=Index}/{id?}");
+if (app.Environment.IsProduction())
+{
+    app.UseExceptionHandler(config =>
+    {
+        config.Run(async context =>
+        {
+            context.Response.StatusCode = 500;
+            context.Response.ContentType = "application/json";
+
+            var errorDetails = new
+            {
+                message = "An unexpected error occurred. Please try again later."
+            };
+
+            var errorJson = JsonSerializer.Serialize(errorDetails);
+            await context.Response.WriteAsync(errorJson);
+        });
+    });
+}
+else
+{
+    app.UseDeveloperExceptionPage();
+}
 
 app.Run();

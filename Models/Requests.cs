@@ -23,8 +23,6 @@ namespace AltShare.Models
         public string PasswordConfirmation { get; set; } = string.Empty;
 
         public string MasterKeyEncrypted { get; set; }
-        public string IV { get; set; }
-        public string Salt { get; set; }
     }
 
     public class LoginRequest

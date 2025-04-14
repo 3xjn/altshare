@@ -32,66 +32,6 @@ namespace AltShare.Services
         public void Delete(EncryptedSharedAccount accountForDeletion) => _sharedAccounts.DeleteOne(account => account.Id == accountForDeletion.Id);
 
         public void Delete(string id) => _sharedAccounts.DeleteOne(account => account.Id.ToString() == id);
-
-        public byte[] DeriveKeyWithArgon2(string password, byte[] salt)
-        {
-            var config = new Argon2Config {
-                TimeCost = 3,
-                MemoryCost = 65536,
-                Lanes = 2,
-                Password = Encoding.UTF8.GetBytes(password),
-                Salt = salt,
-                HashLength = 32
-            };
-            
-            using var argon2 = new Argon2(config);
-            return argon2.Hash().Buffer;
-        }
-
-        public byte[] EncryptMasterKey(byte[] masterKey, string password, out byte[] salt, out byte[] iv, out byte[] tag)
-        {
-            salt = new byte[16];
-            iv = new byte[12];
-            RandomNumberGenerator.Fill(salt);
-            RandomNumberGenerator.Fill(iv);
-
-            // Derive key using Argon2
-            var derivedKey = DeriveKeyWithArgon2(password, salt);
-
-            using var aes = new AesGcm(derivedKey);
-            var ciphertext = new byte[masterKey.Length];
-            tag = new byte[16];
-
-            aes.Encrypt(iv, masterKey, ciphertext, tag);
-            return ciphertext;
-        }
-
-        public byte[] DecryptMasterKey(byte[] encryptedMasterKey, byte[] salt, byte[] iv, byte[] tag, string password)
-        {
-            var derivedKey = DeriveKeyWithArgon2(password, salt);
-            var plaintext = new byte[encryptedMasterKey.Length];
-
-            using var aes = new AesGcm(derivedKey);
-            aes.Decrypt(iv, encryptedMasterKey, tag, plaintext);
-
-            return plaintext;
-        }
-
-        public async Task<byte[]> GetDecryptedMasterKeyAsync(string email, string password)
-        {
-            var mapping = await _masterKeyMappings.Find(m => m.Email == email)
-                                                .FirstOrDefaultAsync();
-
-            if (mapping == null) throw new InvalidOperationException("Master key not found");
-
-            return DecryptMasterKey(
-                mapping.EncryptedMasterKey,
-                mapping.Salt,
-                mapping.IV,
-                mapping.Tag,
-                password
-            );
-        }
     }
 }
     
