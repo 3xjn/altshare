@@ -51,7 +51,7 @@ namespace AltShare.Controllers
 
             var privateKeyPath =
                 IsRunningInKubernetes()
-                    ? "/run/secrets/altshare/private_key.pem"
+                    ? "/run/secrets/altshare/jwt_private_key.pem"
                     : "private_key.pem";
 
             if (!System.IO.File.Exists(privateKeyPath))
