@@ -11,6 +11,7 @@ using System.Text.Json;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
+builder.Configuration.AddUserSecrets<Program>();
 
 builder.Services.AddControllersWithViews();
 builder.Services.AddSwaggerGen(option =>

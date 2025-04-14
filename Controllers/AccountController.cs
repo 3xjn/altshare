@@ -22,12 +22,14 @@ namespace AltShare.Controllers
         private readonly IMongoCollection<SharedAccountMapping> _mapping;
         private readonly IMongoCollection<SharingRelationship> _relationships;
         private readonly HttpClient _httpClient;
+        private readonly IConfiguration _configuration;
 
         public AccountController(
             MongoClient mongoClient,
             IOptions<AccountDatabaseSettings> settings,
             SharedAccountService sharedService,
-            HttpClient httpClient)
+            HttpClient httpClient,
+            IConfiguration configuration)
         {
             _sharedService = sharedService;
             var database = mongoClient.GetDatabase(settings.Value.DatabaseName);
@@ -35,6 +37,7 @@ namespace AltShare.Controllers
             _mapping = database.GetCollection<SharedAccountMapping>(nameof(SharedAccountMapping));
             _relationships = database.GetCollection<SharingRelationship>(nameof(SharingRelationship));
             _httpClient = httpClient;
+            _configuration = configuration;
         }
 
         [HttpGet]
@@ -229,22 +232,31 @@ namespace AltShare.Controllers
         [HttpGet("rank")]
         public async Task<IActionResult> GetRank([FromQuery] RankRequest request)
         {
-            _httpClient.DefaultRequestHeaders.Add("x-api-key", "6e0a773201e199d9889dc8c8c0147ff033a6c841af7e6a4b6fd739a876e7937d");
+            var apiKey = _configuration["MarvelRivals:ApiKey"];
+            if (String.IsNullOrEmpty(apiKey)) throw new InvalidOperationException("Failed to access MarvelRivalsApi.com key");
+
+            _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
             await _httpClient.GetAsync($"https://marvelrivalsapi.com/api/v1/player/{request.Username}/update");
 
-            var response = await _httpClient.GetAsync($"https://marvelrivalsapi.com/api/v1/player/{request.Username}?season=2");
-            response.EnsureSuccessStatusCode();
+            var response = await _httpClient.GetAsync($"https://marvelrivalsapi.com/api/v1/player/{request.Username}");
+            //response.EnsureSuccessStatusCode();
 
             var jsonString = await response.Content.ReadAsStringAsync();
-            using (JsonDocument doc = JsonDocument.Parse(jsonString))
+            try
             {
-                var rank = doc.RootElement
-                                  .GetProperty("player")
-                                  .GetProperty("rank")
-                                  .GetProperty("rank")
-                                  .GetString();
+                using (JsonDocument doc = JsonDocument.Parse(jsonString))
+                {
+                    var rank = doc.RootElement
+                                      .GetProperty("player")
+                                      .GetProperty("rank")
+                                      .GetProperty("rank")
+                                      .GetString();
 
-                return Ok(new { rank });
+                    return Ok(new { rank });
+                }
+            } catch
+            {
+                return Ok(new { rank = "Invalid level" });
             }
         }
     }
