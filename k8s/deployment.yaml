@@ -45,6 +45,11 @@ spec:
           value: "UserAccount"
         - name: Mongo__AccountCollectionName
           value: "SharedAccount"
+        - name: MARVEL_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: marvel-rivals-api-key
+              key: key
         volumeMounts:
         - name: jwt-keys
           mountPath: "/run/secrets/altshare"

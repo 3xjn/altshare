@@ -232,7 +232,7 @@ namespace AltShare.Controllers
         [HttpGet("rank")]
         public async Task<IActionResult> GetRank([FromQuery] RankRequest request)
         {
-            var apiKey = _configuration["MarvelRivals:ApiKey"];
+            var apiKey = Environment.GetEnvironmentVariable("MARVEL_API_KEY") ?? _configuration["MarvelRivals:ApiKey"];
             if (String.IsNullOrEmpty(apiKey)) throw new InvalidOperationException("Failed to access MarvelRivalsApi.com key");
 
             _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
