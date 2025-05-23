@@ -12,6 +12,6 @@ namespace AltShare.Models
         public string Email { get; set; } = string.Empty;
 
         [BsonElement("EncryptedMasterKey")]
-        public byte[] EncryptedMasterKey { get; set; } = Array.Empty<byte>();
+        public byte[]? EncryptedMasterKey { get; set; } = Array.Empty<byte>();
     }
 }

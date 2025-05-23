@@ -159,7 +159,7 @@ namespace AltShare.Controllers
             var mapping = await _mapping.Find(emailFilter).FirstOrDefaultAsync();
 
             Console.WriteLine($"Found mapping: {mapping != null}");
-            if (mapping == null || mapping.EncryptedMasterKey == null || mapping.EncryptedMasterKey.Length == 0)
+            if (mapping is not { EncryptedMasterKey: not null } || mapping.EncryptedMasterKey.Length == 0)
             {
                 Console.WriteLine("No valid master key found - user must register");
                 return Unauthorized(new {

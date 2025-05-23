@@ -55,7 +55,7 @@ namespace AltShare.Controllers
 
             foreach (var account in accounts)
             {
-                accountResponse.Add(new Dictionary<string, string> { { "encryptedData", account.EncryptedJson } });
+                accountResponse.Add(new Dictionary<string, string> { { "encryptedData", account.EncryptedJson }, { "id", account.Id.ToString() } });
             }
 
             return Ok(accountResponse);
@@ -157,7 +157,7 @@ namespace AltShare.Controllers
         {
             var ownerEmail = User.FindFirst(ClaimTypes.Email)?.Value;
             if (string.IsNullOrEmpty(ownerEmail))
-            {
+            { 
                 return Unauthorized(new { message = "Invalid token." });
             }
 
