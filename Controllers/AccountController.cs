@@ -23,11 +23,13 @@ namespace AltShare.Controllers
         private readonly IMongoCollection<SharingRelationship> _relationships;
         private readonly HttpClient _httpClient;
         private readonly IConfiguration _configuration;
+        private readonly GroupService _groupService;
 
         public AccountController(
             MongoClient mongoClient,
             IOptions<AccountDatabaseSettings> settings,
             SharedAccountService sharedService,
+            GroupService groupService,
             HttpClient httpClient,
             IConfiguration configuration)
         {
@@ -38,6 +40,7 @@ namespace AltShare.Controllers
             _relationships = database.GetCollection<SharingRelationship>(nameof(SharingRelationship));
             _httpClient = httpClient;
             _configuration = configuration;
+            _groupService = groupService;
         }
 
         [HttpGet]
@@ -49,13 +52,22 @@ namespace AltShare.Controllers
                 return Unauthorized(new { message = "Invalid token." });
             }
 
+            var defaultGroup = await _groupService.EnsureDefaultGroupAsync(email);
             var emailFilter = Builders<EncryptedSharedAccount>.Filter.Eq(account => account.OwnerEmail, email);
             var accounts = await _shared.Find(emailFilter).ToListAsync();
             var accountResponse = new List<Dictionary<string, string>>();
 
             foreach (var account in accounts)
             {
-                accountResponse.Add(new Dictionary<string, string> { { "encryptedData", account.EncryptedJson }, { "id", account.Id.ToString() } });
+                var groupId = account.GroupId == ObjectId.Empty
+                    ? defaultGroup.Id
+                    : account.GroupId;
+                accountResponse.Add(new Dictionary<string, string>
+                {
+                    { "encryptedData", account.EncryptedJson },
+                    { "id", account.Id.ToString() },
+                    { "groupId", groupId.ToString() }
+                });
             }
 
             return Ok(accountResponse);
@@ -67,13 +79,20 @@ namespace AltShare.Controllers
             var email = User.FindFirst(ClaimTypes.Email)?.Value;
             if (string.IsNullOrEmpty(email)) return Unauthorized();
 
+            var groupId = await _groupService.TryResolveGroupIdAsync(email, request.groupId);
+            if (!groupId.HasValue)
+            {
+                return BadRequest(new { message = "Invalid group." });
+            }
+
             var accountId = ObjectId.GenerateNewId();
 
             var encryptedAccount = new EncryptedSharedAccount
             {
                 Id = accountId,
                 OwnerEmail = email,
-                EncryptedJson = request.encryptedData
+                EncryptedJson = request.encryptedData,
+                GroupId = groupId.Value
             };
 
             await _shared.InsertOneAsync(encryptedAccount);
@@ -122,6 +141,16 @@ namespace AltShare.Controllers
 
             try
             {
+                ObjectId? groupId = null;
+                if (!string.IsNullOrWhiteSpace(request.groupId))
+                {
+                    groupId = await _groupService.TryResolveGroupIdAsync(email, request.groupId);
+                    if (!groupId.HasValue)
+                    {
+                        return BadRequest(new { message = "Invalid group." });
+                    }
+                }
+
                 var filter = Builders<EncryptedSharedAccount>.Filter.And(
                     Builders<EncryptedSharedAccount>.Filter.Eq("_id", ObjectId.Parse(id)),
                     Builders<EncryptedSharedAccount>.Filter.Eq("OwnerEmail", email)
@@ -135,6 +164,10 @@ namespace AltShare.Controllers
 
                 var update = Builders<EncryptedSharedAccount>.Update
                     .Set(a => a.EncryptedJson, request.encryptedData);
+                if (groupId.HasValue)
+                {
+                    update = update.Set(a => a.GroupId, groupId.Value);
+                }
 
                 await _shared.UpdateOneAsync(filter, update);
 
@@ -161,17 +194,28 @@ namespace AltShare.Controllers
                 return Unauthorized(new { message = "Invalid token." });
             }
 
+            var groupId = await _groupService.TryResolveGroupIdAsync(ownerEmail, request.GroupId);
+            if (!groupId.HasValue)
+            {
+                return BadRequest(new { message = "Invalid group." });
+            }
+
             var relationship = new SharingRelationship
             {
                 OwnerEmail = ownerEmail,
                 SharedWithEmail = request.SharedWithEmail,
-                EncryptedMasterKey = Convert.FromBase64String(request.EncryptedMasterKey),
+                GroupId = groupId.Value,
+                EncryptedGroupKey = Convert.FromBase64String(request.EncryptedGroupKey),
                 IV = Convert.FromBase64String(request.IV),
                 Salt = Convert.FromBase64String(request.Salt),
                 Tag = Convert.FromBase64String(request.Tag)
             };
 
-            var existingRelationshipCount = await _relationships.CountDocumentsAsync(sr => sr.OwnerEmail == ownerEmail && sr.SharedWithEmail == request.SharedWithEmail);
+            var existingRelationshipCount = await _relationships.CountDocumentsAsync(sr =>
+                sr.OwnerEmail == ownerEmail &&
+                sr.SharedWithEmail == request.SharedWithEmail &&
+                sr.GroupId == groupId.Value
+            );
 
             if (existingRelationshipCount > 0)
             {
@@ -203,8 +247,16 @@ namespace AltShare.Controllers
             {
                 try
                 {
+                    var ownerDefaultGroup = await _groupService.EnsureDefaultGroupAsync(invite.OwnerEmail);
+                    var groupId = invite.GroupId == ObjectId.Empty
+                        ? ownerDefaultGroup.Id
+                        : invite.GroupId;
+
                     Console.WriteLine($"Looking for accounts from owner: {invite.OwnerEmail}");
-                    var filter = Builders<EncryptedSharedAccount>.Filter.Eq(a => a.OwnerEmail, invite.OwnerEmail);
+                    var filter = Builders<EncryptedSharedAccount>.Filter.And(
+                        Builders<EncryptedSharedAccount>.Filter.Eq(a => a.OwnerEmail, invite.OwnerEmail),
+                        Builders<EncryptedSharedAccount>.Filter.Eq(a => a.GroupId, groupId)
+                    );
                     var sharedAccounts = await _shared.Find(filter).ToListAsync();
                     Console.WriteLine($"Found {sharedAccounts.Count} accounts from this owner");
 
@@ -213,7 +265,8 @@ namespace AltShare.Controllers
                         encryptedAccounts.Add(new Dictionary<string, string> {
                             { "encryptedData", sharedAccount.EncryptedJson },
                             { "id", sharedAccount.Id.ToString() },
-                            { "encryptedMasterKey", Convert.ToBase64String(invite.EncryptedMasterKey) },
+                            { "groupId", groupId.ToString() },
+                            { "encryptedGroupKey", Convert.ToBase64String(invite.EncryptedGroupKey) },
                             { "iv", Convert.ToBase64String(invite.IV) },
                             { "salt", Convert.ToBase64String(invite.Salt) },
                             { "tag", Convert.ToBase64String(invite.Tag) }
@@ -265,7 +318,8 @@ namespace AltShare.Controllers
     public class CreateSharingRequest
     {
         public string SharedWithEmail { get; set; } = null!;
-        public string EncryptedMasterKey { get; set; } = null!;
+        public string GroupId { get; set; } = null!;
+        public string EncryptedGroupKey { get; set; } = null!;
         public string IV { get; set; } = null!;
         public string Salt { get; set; } = null!;
         public string Tag { get; set; } = null!;

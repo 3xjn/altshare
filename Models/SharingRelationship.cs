@@ -14,8 +14,11 @@ namespace AltShare.Models
         [BsonElement("sharedWithEmail")]
         public string SharedWithEmail { get; set; } = null!;
         
+        [BsonElement("groupId")]
+        public ObjectId GroupId { get; set; }
+
         [BsonElement("encryptedMasterKey")]
-        public byte[] EncryptedMasterKey { get; set; } = null!;
+        public byte[] EncryptedGroupKey { get; set; } = null!;
         
         [BsonElement("iv")]
         public byte[] IV { get; set; } = null!;

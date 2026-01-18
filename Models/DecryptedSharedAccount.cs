@@ -17,5 +17,8 @@ namespace AltShare.Models
 
         public string OwnerEmail { get; set; }
         public string EncryptedJson { get; set; }
+
+        [BsonElement("groupId")]
+        public ObjectId GroupId { get; set; }
     }
 }

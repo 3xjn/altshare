@@ -52,5 +52,15 @@ namespace AltShare.Models
     {
         public string encryptedData { get; set; } = "";
         public string userKey { get; set; } = "";
+        public string? groupId { get; set; }
+    }
+
+    public class CreateGroupRequest
+    {
+        [Required]
+        public string Name { get; set; } = string.Empty;
+
+        [Required]
+        public string EncryptedGroupKey { get; set; } = string.Empty;
     }
 }
