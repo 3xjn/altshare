@@ -5,7 +5,6 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using MongoDB.Driver;
 using System.Security.Cryptography;
 using Microsoft.OpenApi.Models;
-using System.Net;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -144,6 +143,12 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
                 {
                     context.Token = accessToken;
                 }
+
+                if (string.IsNullOrEmpty(context.Token) &&
+                    context.Request.Cookies.TryGetValue("altshare_auth", out var cookieToken))
+                {
+                    context.Token = cookieToken;
+                }
                 return Task.CompletedTask;
             }
         };
@@ -167,9 +172,6 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
-ServicePointManager.ServerCertificateValidationCallback +=
-(sender, cert, chain, sslPolicyErrors) => { return true; };
-
 app.UseHttpsRedirection();
 
 app.UseRouting();
@@ -187,6 +189,11 @@ app.UseSwaggerUI(c =>
     c.SwaggerEndpoint("/swagger/v1/swagger.json", "AltShare v1");
     c.RoutePrefix = "swagger";
 });
+
+if (app.Environment.IsDevelopment())
+{
+    app.MapGet("/", () => Results.Redirect("/swagger"));
+}
 
 // Map endpoints after UseRouting and UseCors
 app.MapHub<SignalingHub>("/api/hub");

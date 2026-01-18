@@ -22,7 +22,8 @@ namespace AltShare.Models
         [Compare("Password")]
         public string PasswordConfirmation { get; set; } = string.Empty;
 
-        public string MasterKeyEncrypted { get; set; }
+        [Required]
+        public string MasterKeyEncrypted { get; set; } = string.Empty;
     }
 
     public class LoginRequest
@@ -33,6 +34,12 @@ namespace AltShare.Models
 
         [Required]
         public string Password { get; set; } = string.Empty;
+    }
+
+    public class UpdateUserSecurityProfileRequest
+    {
+        [Required]
+        public string EncryptedMasterKey { get; set; } = string.Empty;
     }
 
     public class UploadAccountRequest
