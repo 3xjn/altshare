@@ -94,7 +94,6 @@ builder.Services.AddSingleton(database.GetCollection<SharedAccountMapping>(
 
 // Register services
 builder.Services.AddSingleton<UserAccountService>();
-builder.Services.AddSingleton<SharedAccountService>();
 builder.Services.AddSingleton<PasswordHasherService>();
 builder.Services.AddSingleton<GroupService>();
 

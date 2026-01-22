@@ -17,7 +17,6 @@ namespace AltShare.Controllers
     [Authorize]
     public class AccountController : Controller
     {
-        private readonly SharedAccountService _sharedService;
         private readonly IMongoCollection<EncryptedSharedAccount> _shared;
         private readonly IMongoCollection<SharedAccountMapping> _mapping;
         private readonly IMongoCollection<SharingRelationship> _relationships;
@@ -28,12 +27,10 @@ namespace AltShare.Controllers
         public AccountController(
             MongoClient mongoClient,
             IOptions<AccountDatabaseSettings> settings,
-            SharedAccountService sharedService,
             GroupService groupService,
             HttpClient httpClient,
             IConfiguration configuration)
         {
-            _sharedService = sharedService;
             var database = mongoClient.GetDatabase(settings.Value.DatabaseName);
             _shared = database.GetCollection<EncryptedSharedAccount>(nameof(EncryptedSharedAccount));
             _mapping = database.GetCollection<SharedAccountMapping>(nameof(SharedAccountMapping));
@@ -283,6 +280,78 @@ namespace AltShare.Controllers
             return Ok(new { encryptedAccounts });
         }
 
+        [HttpGet("share/relationships")]
+        public async Task<IActionResult> GetSharingRelationships()
+        {
+            var email = User.FindFirst(ClaimTypes.Email)?.Value;
+            if (string.IsNullOrEmpty(email))
+            {
+                return Unauthorized(new { message = "Invalid token." });
+            }
+
+            var groups = await _groupService.GetGroupsAsync(email);
+            var defaultGroup = groups.FirstOrDefault(group => group.UsesMasterKey);
+            var defaultGroupId = defaultGroup?.Id ?? ObjectId.Empty;
+            var defaultGroupName = defaultGroup?.Name ?? "Personal";
+            var groupLookup = groups.ToDictionary(group => group.Id, group => group.Name);
+
+            var relationships = await _relationships
+                .Find(relationship => relationship.OwnerEmail == email)
+                .ToListAsync();
+
+            var response = relationships
+                .Select(relationship =>
+                {
+                    var groupId = relationship.GroupId == ObjectId.Empty
+                        ? defaultGroupId
+                        : relationship.GroupId;
+                    var groupName = groupLookup.TryGetValue(groupId, out var name)
+                        ? name
+                        : defaultGroupName;
+
+                    return new SharingRelationshipSummary
+                    {
+                        Id = relationship.Id.ToString(),
+                        SharedWithEmail = relationship.SharedWithEmail,
+                        GroupId = groupId.ToString(),
+                        GroupName = groupName,
+                        CreatedAt = relationship.CreatedAt
+                    };
+                })
+                .OrderByDescending(item => item.CreatedAt)
+                .ToList();
+
+            return Ok(response);
+        }
+
+        [HttpDelete("share/relationships/{id}")]
+        public async Task<IActionResult> RevokeSharingRelationship(string id)
+        {
+            var email = User.FindFirst(ClaimTypes.Email)?.Value;
+            if (string.IsNullOrEmpty(email))
+            {
+                return Unauthorized(new { message = "Invalid token." });
+            }
+
+            if (!ObjectId.TryParse(id, out var relationshipId))
+            {
+                return BadRequest(new { message = "Invalid sharing relationship id." });
+            }
+
+            var filter = Builders<SharingRelationship>.Filter.And(
+                Builders<SharingRelationship>.Filter.Eq(relationship => relationship.Id, relationshipId),
+                Builders<SharingRelationship>.Filter.Eq(relationship => relationship.OwnerEmail, email)
+            );
+
+            var result = await _relationships.DeleteOneAsync(filter);
+            if (result.DeletedCount == 0)
+            {
+                return NotFound(new { message = "Sharing relationship not found." });
+            }
+
+            return Ok();
+        }
+
         [HttpGet("rank")]
         public async Task<IActionResult> GetRank([FromQuery] RankRequest request)
         {
@@ -323,5 +392,14 @@ namespace AltShare.Controllers
         public string IV { get; set; } = null!;
         public string Salt { get; set; } = null!;
         public string Tag { get; set; } = null!;
+    }
+
+    public class SharingRelationshipSummary
+    {
+        public string Id { get; set; } = null!;
+        public string SharedWithEmail { get; set; } = null!;
+        public string GroupId { get; set; } = null!;
+        public string GroupName { get; set; } = null!;
+        public DateTime CreatedAt { get; set; }
     }
 }

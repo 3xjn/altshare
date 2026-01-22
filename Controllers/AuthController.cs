@@ -23,7 +23,6 @@ namespace AltShare.Controllers
     {
         private const string AuthCookieName = "altshare_auth";
         private readonly UserAccountService _accountService;
-        private readonly SharedAccountService _sharedAccountService;
         private readonly PasswordHasherService _passwordHasherService;
         private readonly IConfiguration _configuration;
         private readonly IMongoCollection<EncryptedSharedAccount> _shared;
@@ -35,13 +34,11 @@ namespace AltShare.Controllers
             MongoClient mongoClient,
             IOptions<AccountDatabaseSettings> settings,
             UserAccountService accountService,
-            SharedAccountService sharedAccountService,
             PasswordHasherService passwordHasherService,
             IConfiguration configuration,
             IHttpClientFactory httpClientFactory)
         {
             _accountService = accountService;
-            _sharedAccountService = sharedAccountService;
             _passwordHasherService = passwordHasherService;
             _configuration = configuration;
             _httpClient = httpClientFactory.CreateClient();

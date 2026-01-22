@@ -17,44 +17,61 @@ public class SignalingHub : Hub
 
     public async Task JoinRoom(string roomId)
     {
-        _logger.LogInformation($"trying to join {roomId}");
-        
-        if (_mapping.ContainsKey(roomId))
+        _logger.LogInformation(
+            "Trying to join room {RoomId} from {ConnectionId}",
+            roomId,
+            Context.ConnectionId
+        );
+ 
+        if (!_mapping.TryGetValue(roomId, out var creatorConnectionId))
         {
-            var creatorConnectionId = _mapping[roomId];
-            _logger.LogInformation($"found creator connection {creatorConnectionId}");
-
-            await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
-            await Groups.AddToGroupAsync(creatorConnectionId, roomId);
-            _groups.Add(roomId);
-
-            await Clients.Client(creatorConnectionId).SendAsync("UserJoined");
+            _logger.LogWarning("Room {RoomId} doesn't exist", roomId);
+            return;
         }
-        else
-        {
-            _logger.LogWarning($"room {roomId} doesn't exist");
-        }
+
+        _logger.LogInformation(
+            "Found creator connection {CreatorConnectionId} for room {RoomId}",
+            creatorConnectionId,
+            roomId
+        );
+
+        await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
+        await Groups.AddToGroupAsync(creatorConnectionId, roomId);
+        _groups.Add(roomId);
+
+        await Clients.Client(creatorConnectionId).SendAsync("UserJoined");
     }
 
     public async Task CreateRoom()
     {
         var roomId = Uuid.NewRandom().ToString();
-        _logger.LogInformation($"creating room with id: {roomId}");
-        
+        _logger.LogInformation(
+            "Creating room {RoomId} for {ConnectionId}",
+            roomId,
+            Context.ConnectionId
+        );
+
         if (_mapping.TryAdd(roomId, Context.ConnectionId))
         {
-            _logger.LogInformation($"room {roomId} created successfully");
+            _logger.LogInformation("Room {RoomId} created successfully", roomId);
             await Groups.AddToGroupAsync(Context.ConnectionId, roomId);
             _groups.Add(roomId);
             await Clients.Caller.SendAsync("RoomCreated", roomId);
+            return;
         }
+
+        _logger.LogWarning("Room {RoomId} already exists", roomId);
     }
 
     public async Task SendSignal(string roomId, object signalData)
     {
-        _logger.LogInformation($"Received signal in room {roomId} from {Context.ConnectionId}");
-        _logger.LogInformation($"Signal data: {signalData}");
-        
+        _logger.LogInformation(
+            "Received signal in room {RoomId} from {ConnectionId}",
+            roomId,
+            Context.ConnectionId
+        );
+        _logger.LogInformation("Signal data: {SignalData}", signalData);
+
         // Send to all clients in the group except the sender
         await Clients.OthersInGroup(roomId).SendAsync("ReceiveSignal", signalData);
     }
@@ -62,13 +79,17 @@ public class SignalingHub : Hub
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
         var roomsToRemove = _mapping.Where(kvp => kvp.Value == Context.ConnectionId)
-                                  .Select(kvp => kvp.Key)
-                                  .ToList();
+            .Select(kvp => kvp.Key)
+            .ToList();
 
         foreach (var roomId in roomsToRemove)
         {
             _mapping.TryRemove(roomId, out _);
-            _logger.LogInformation($"Removed room {roomId} due to disconnect");
+            _logger.LogInformation(
+                "Removed room {RoomId} due to disconnect of {ConnectionId}",
+                roomId,
+                Context.ConnectionId
+            );
         }
 
         await base.OnDisconnectedAsync(exception);
