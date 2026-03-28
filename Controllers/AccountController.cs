@@ -212,6 +212,7 @@ namespace AltShare.Controllers
                     {
                         encryptedAccounts.Add(new Dictionary<string, string> {
                             { "encryptedData", sharedAccount.EncryptedJson },
+                            { "id", sharedAccount.Id.ToString() },
                             { "encryptedMasterKey", Convert.ToBase64String(invite.EncryptedMasterKey) },
                             { "iv", Convert.ToBase64String(invite.IV) },
                             { "salt", Convert.ToBase64String(invite.Salt) },
