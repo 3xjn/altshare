@@ -28,6 +28,20 @@ spec:
             name: altshare
             port:
               number: 8080
+      - pathType: Prefix
+        path: /group
+        backend:
+          service:
+            name: altshare
+            port:
+              number: 8080
+      - pathType: Prefix
+        path: /groups
+        backend:
+          service:
+            name: altshare
+            port:
+              number: 8080
   tls:
   - hosts:
     - share.3xjn.dev

@@ -8,6 +8,9 @@ namespace AltShare.Controllers
 {
     [ApiController]
     [Route("api/group")]
+    [Route("api/groups")]
+    [Route("group")]
+    [Route("groups")]
     [Tags("group")]
     [Authorize]
     public class GroupController : Controller
