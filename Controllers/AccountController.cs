@@ -355,14 +355,33 @@ namespace AltShare.Controllers
         [HttpGet("rank")]
         public async Task<IActionResult> GetRank([FromQuery] RankRequest request)
         {
+            if (request == null || String.IsNullOrWhiteSpace(request.Username))
+            {
+                return BadRequest(new { message = "Username is required." });
+            }
+
             var apiKey = Environment.GetEnvironmentVariable("MARVEL_API_KEY") ?? _configuration["MarvelRivals:ApiKey"];
             if (String.IsNullOrEmpty(apiKey)) throw new InvalidOperationException("Failed to access MarvelRivalsApi.com key");
 
-            _httpClient.DefaultRequestHeaders.Add("x-api-key", apiKey);
-            await _httpClient.GetAsync($"https://marvelrivalsapi.com/api/v1/player/{request.Username}/update");
+            var encodedUsername = Uri.EscapeDataString(request.Username.Trim());
 
-            var response = await _httpClient.GetAsync($"https://marvelrivalsapi.com/api/v1/player/{request.Username}");
-            //response.EnsureSuccessStatusCode();
+            using var updateRequest = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"https://marvelrivalsapi.com/api/v1/player/{encodedUsername}/update");
+            updateRequest.Headers.Add("x-api-key", apiKey);
+
+            await _httpClient.SendAsync(updateRequest);
+
+            using var rankRequest = new HttpRequestMessage(
+                HttpMethod.Get,
+                $"https://marvelrivalsapi.com/api/v1/player/{encodedUsername}");
+            rankRequest.Headers.Add("x-api-key", apiKey);
+
+            var response = await _httpClient.SendAsync(rankRequest);
+            if (!response.IsSuccessStatusCode)
+            {
+                return Ok(new { rank = "Invalid level" });
+            }
 
             var jsonString = await response.Content.ReadAsStringAsync();
             try
