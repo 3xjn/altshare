@@ -14,14 +14,10 @@ spec:
       labels:
         app: altshare
     spec:
-      imagePullSecrets:
-        - name: ghcr-auth
       containers:
       - name: altshare
         image: altshare:latest
-        imagePullPolicy: IfNotPresent
-        securityContext:
-          privileged: true
+        imagePullPolicy: Always
         resources:
           requests:
             memory: "256Mi"
@@ -38,7 +34,7 @@ spec:
               name: jwt-keys
               key: mongodb-connection-string
         - name: JWT__Issuer
-          value: "share.raegous.dev"
+          value: "share.3xjn.dev"
         - name: Mongo__DatabaseName
           value: "AccountShare"
         - name: Mongo__UserCollectionName
@@ -66,4 +62,4 @@ spec:
           - key: public-key
             path: jwt_public_key.pem
       - name: tmp
-        emptyDir: {} 
+        emptyDir: {}

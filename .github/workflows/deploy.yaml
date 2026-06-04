@@ -23,6 +23,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Log in to the Container registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -32,41 +33,51 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and push Docker image
+      - name: Build Docker image
         uses: docker/build-push-action@v5
         with:
           context: .
-          push: true
+          push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
       - name: Install kubectl
+        if: github.event_name != 'pull_request'
         uses: azure/setup-kubectl@v3
         with:
           version: 'latest'
 
       - name: Set up kubeconfig
+        if: github.event_name != 'pull_request'
+        env:
+          KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
         run: |
           mkdir -p ~/.kube
-          echo "${{ secrets.KUBECONFIG }}" > ~/.kube/config
+          printf '%s' "$KUBECONFIG_CONTENT" > ~/.kube/config
           chmod 600 ~/.kube/config
 
-      - name: Verify cluster connection
+      - name: Verify hearth MicroK8s connection
+        if: github.event_name != 'pull_request'
         run: |
+          kubectl config current-context
           kubectl cluster-info
-          kubectl get nodes
+          kubectl get nodes -o wide
 
       - name: Update image in deployment manifest
+        if: github.event_name != 'pull_request'
         run: |
           sed -i "s|image: altshare:latest|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|" k8s/deployment.yaml
 
       - name: Apply k8s manifests
+        if: github.event_name != 'pull_request'
         run: |
-          export KUBECONFIG=~/.kube/config
-          kubectl apply -f k8s/
+          kubectl apply -f k8s/deployment.yaml
+          kubectl apply -f k8s/service.yaml
+          kubectl apply -f k8s/ingress.yaml
 
       - name: Verify deployment
+        if: github.event_name != 'pull_request'
         run: |
+          kubectl rollout status deployment/altshare --timeout=180s
           kubectl get pods -l app=altshare
           kubectl get service altshare
           kubectl get ingress altshare-ingress
-
