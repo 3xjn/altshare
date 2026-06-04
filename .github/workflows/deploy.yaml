@@ -66,6 +66,16 @@ jobs:
           kubectl cluster-info
           kubectl get nodes -o wide
 
+      - name: Configure GHCR image pull secret
+        env:
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_READ_TOKEN || secrets.GITHUB_TOKEN }}
+        run: |
+          kubectl create secret docker-registry ghcr-auth \
+            --docker-server=${{ env.REGISTRY }} \
+            --docker-username=${{ github.actor }} \
+            --docker-password="$GHCR_PULL_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       - name: Update image in deployment manifest
         run: |
           sed -i "s|image: altshare:latest|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|" k8s/deployment.yaml
