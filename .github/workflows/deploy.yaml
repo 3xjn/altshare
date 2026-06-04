@@ -12,7 +12,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-deploy:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -40,14 +40,19 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }},${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
 
-      - name: Install kubectl
-        if: github.event_name != 'pull_request'
-        uses: azure/setup-kubectl@v3
-        with:
-          version: 'latest'
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: build
+    runs-on: [self-hosted, hearth-microk8s, altshare]
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
       - name: Set up kubeconfig
-        if: github.event_name != 'pull_request'
         env:
           KUBECONFIG_CONTENT: ${{ secrets.KUBECONFIG }}
         run: |
@@ -56,26 +61,22 @@ jobs:
           chmod 600 ~/.kube/config
 
       - name: Verify hearth MicroK8s connection
-        if: github.event_name != 'pull_request'
         run: |
           kubectl config current-context
           kubectl cluster-info
           kubectl get nodes -o wide
 
       - name: Update image in deployment manifest
-        if: github.event_name != 'pull_request'
         run: |
           sed -i "s|image: altshare:latest|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}|" k8s/deployment.yaml
 
       - name: Apply k8s manifests
-        if: github.event_name != 'pull_request'
         run: |
           kubectl apply -f k8s/deployment.yaml
           kubectl apply -f k8s/service.yaml
           kubectl apply -f k8s/ingress.yaml
 
       - name: Verify deployment
-        if: github.event_name != 'pull_request'
         run: |
           kubectl rollout status deployment/altshare --timeout=180s
           kubectl get pods -l app=altshare
